@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Social Mechanics — Perspective</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a0f;
+    color: #f0f0f4;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+  }
+  #canvas-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+  }
+  canvas {
+    flex: 1;
+    display: block;
+    min-width: 0;
+    min-height: 0;
+  }
+  #controls {
+    height: 48px;
+    background: #12121a;
+    border-top: 1px solid #2a2a3a;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 12px;
+    font-size: 12px;
+  }
+  #controls button {
+    background: #1a1a28;
+    border: 1px solid #2a2a3a;
+    color: #f0f0f4;
+    border-radius: 4px;
+    padding: 4px 12px;
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    min-width: 36px;
+  }
+  #controls button:hover { background: #2a2a3a; }
+  #controls button.active { background: #3a3a5a; border-color: #5a5a7a; }
+  #timeline {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 6px;
+    background: #1a1a28;
+    border-radius: 3px;
+    outline: none;
+  }
+  #timeline::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: #6070a0;
+    cursor: pointer;
+    border: 2px solid #8090c0;
+  }
+  #day-label {
+    color: #eaeaea;
+    min-width: 80px;
+    text-align: right;
+  }
+  #speed-label {
+    color: #eaeaea;
+    min-width: 40px;
+  }
+  #menu-toggle {
+    display: none;
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 200;
+    background: rgba(18,18,26,0.85);
+    border: 1px solid #2a2a3a;
+    color: #f0f0f4;
+    border-radius: 8px;
+    width: 44px;
+    height: 44px;
+    font-size: 22px;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+  }
+  #sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 299;
+  }
+  #sidebar {
+    position: relative;
+    width: 280px;
+    padding: 20px;
+    background: #12121a;
+    border-left: 1px solid #2a2a3a;
+    overflow-y: auto;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  #sidebar-close {
+    display: none;
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: none;
+    border: none;
+    color: #f0f0f4;
+    font-size: 22px;
+    cursor: pointer;
+  }
+
+  @media (max-width: 768px) {
+    body { flex-direction: column; }
+    #menu-toggle { display: flex; }
+    #sidebar {
+      position: fixed;
+      top: 0; right: 0; bottom: 0;
+      width: 280px;
+      max-width: 85vw;
+      z-index: 300;
+      transform: translateX(100%);
+      transition: transform 0.25s ease;
+    }
+    #sidebar.open { transform: translateX(0); }
+    #sidebar-backdrop.open { display: block; }
+    #sidebar-close { display: block; }
+    #controls {
+      flex-wrap: wrap;
+      height: auto;
+      min-height: 48px;
+      padding: 8px 10px;
+      gap: 8px;
+    }
+    #timeline { min-width: 0; order: 10; flex-basis: 100%; }
+    #day-label { order: 11; min-width: unset; text-align: center; flex: 1; }
+    canvas { touch-action: none; }
+  }
+  #sidebar h2 { font-size: 14px; color: #e0e0e8; margin-bottom: 12px; letter-spacing: 0.5px; }
+  #sidebar h3 { font-size: 12px; color: #eaeaea; margin-top: 16px; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px; }
+  .node-list { list-style: none; }
+  .node-list li { padding: 4px 0; display: flex; justify-content: space-between; border-bottom: 1px solid #1a1a28; }
+  .node-name { color: #eaeaea; }
+  .node-val { color: #eaeaea; font-size: 12px; }
+  #legend { margin-top: 20px; padding-top: 16px; border-top: 1px solid #2a2a3a; }
+  #legend-gradient { width: 100%; height: 14px; border-radius: 3px; margin: 8px 0 4px; }
+  .legend-labels { display: flex; justify-content: space-between; font-size: 11px; color: #eaeaea; }
+  #perspective-select {
+    width: 100%; margin-bottom: 16px; padding: 6px 8px;
+    background: #1a1a28; color: #eaeaea; border: 1px solid #2a2a3a;
+    border-radius: 4px; font-family: inherit; font-size: 13px;
+  }
+  .sidebar-about { color: #eaeaea; font-size: 11px; line-height: 1.5; margin-bottom: 12px; border-bottom: 1px solid #2a2a3a; padding-bottom: 12px; }
+  .sidebar-about strong { color: #f0f0f4; }
+  .formula { color: #eaeaea; font-size: 11px; margin-top: 4px; }
+  #hover-info {
+    margin-top: 16px; padding: 10px; background: #1a1a28;
+    border-radius: 4px; min-height: 60px; font-size: 12px; color: #eaeaea;
+  }
+  #hover-info .highlight { color: #e0e0e8; }
+  #tooltip {
+    position: fixed; pointer-events: none;
+    background: rgba(18, 18, 26, 0.95); border: 1px solid #3a3a5a;
+    border-radius: 5px; padding: 8px 12px; font-size: 12px;
+    font-family: inherit; color: #eaeaea; line-height: 1.5;
+    display: none; z-index: 100; max-width: 260px;
+  }
+  #tooltip .tt-title { color: #e0e0f0; font-weight: bold; }
+  #tooltip .tt-dim { color: #eaeaea; }
+  #loading {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    color: #eaeaea; font-size: 14px;
+  }
+</style>
+</head>
+<body>
+<div id="canvas-wrap">
+  <canvas id="canvas"></canvas>
+  <div id="controls">
+    <button id="btn-play"><i class="ph ph-play"></i></button>
+    <button id="btn-slower">−</button>
+    <span id="speed-label">2×</span>
+    <button id="btn-faster">+</button>
+    <input type="range" id="timeline" min="0" max="0" value="0">
+    <span id="day-label">Day 0</span>
+  </div>
+</div>
+<button id="menu-toggle"><i class="ph ph-list"></i></button>
+<div id="tooltip"></div>
+<div id="sidebar-backdrop"></div>
+<div id="sidebar">
+  <button id="sidebar-close"><i class="ph ph-x"></i></button>
+  <h2>Perspective</h2>
+
+  <p class="sidebar-about">A perspective is a view of the social graph centered on one person. Radial distance is the PAIR Score &mdash; closer nodes have more interaction time. Angles carry no meaning. <strong>Solid</strong> lines show geometric distances from the center; <strong>dashed</strong> lines are projections (their screen length does not match the true PAIR Score between those nodes). Click any node to re-center.</p>
+
+  <h3>Viewing as</h3>
+  <select id="perspective-select"></select>
+  <h3>Connections</h3>
+  <ul class="node-list" id="node-list"></ul>
+  <div id="legend">
+    <h3>PAIR Score</h3>
+    <canvas id="legend-gradient" height="14"></canvas>
+    <div class="legend-labels">
+      <span>low τ</span>
+      <span>high τ</span>
+    </div>
+  </div>
+  <div class="formula">PAIR(i,j) = −ln(τ(i,j) / 24)</div>
+  <div id="hover-info">Hover over a node or edge for details.</div>
+</div>
+<div id="loading">Loading simulation…</div>
+
+<script>
+const H = 24;
+const PIXELS_PER_UNIT = 50;
+const ZOOM_MIN = 0.15, ZOOM_MAX = 8;
+const ANIM_DURATION = 400;
+
+// ── Simulation data (loaded from JSON) ──
+let simData = null;
+let people = [];
+let N = 0;
+let tauMap = {};        // current interpolated τ values
+let currentFrame = 0;   // integer frame for UI display
+
+// ── State ──
+let centerNode = 0;
+let hoveredNode = -1;
+let hoveredEdge = null;
+let displayNodes = [];
+let camX = 0, camY = 0, zoom = 1;
+let isPanning = false, panStartX = 0, panStartY = 0, camStartX = 0, camStartY = 0;
+let mouseDownX = 0, mouseDownY = 0;
+let animating = false, animStartTime = 0, animFrom = {}, animTo = {};
+let animCamFrom = {x:0,y:0}, animCamTo = {x:0,y:0}, animZoomFrom = 1, animZoomTo = 1, animNewCenter = 0;
+
+// ── Playback (rAF-based with interpolation) ──
+let playing = false;
+let playTime = 0;            // continuous float in frame-space
+let lastTickTime = 0;        // last rAF timestamp
+const BASE_RATE = 3.0;       // frames per second at 1× speed
+const SPEED_OPTIONS = [0.5, 1, 2, 4, 8];
+let speedIdx = 2;
+let speedMul = 2;
+let rafId = null;
+let sidebarThrottle = 0;     // throttle sidebar updates during playback
+
+// ── Canvas ──
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W = 0, H_canvas = 0;
+
+// ── Data access ──
+function interpolateTau(t) {
+  // t is a continuous float in frame-space [0, numFrames-1]
+  const maxF = simData.frames.length - 1;
+  t = Math.max(0, Math.min(t, maxF));
+  const fA = Math.floor(t);
+  const fB = Math.min(fA + 1, maxF);
+  const frac = t - fA;
+  const tauA = simData.frames[fA].tau;
+  const tauB = simData.frames[fB].tau;
+  const result = {};
+  for (const key in tauA) {
+    const a = tauA[key] || 0;
+    const b = tauB[key] || 0;
+    result[key] = a + (b - a) * frac;
+  }
+  return result;
+}
+
+function setPlayTime(t) {
+  const maxF = simData.frames.length - 1;
+  playTime = Math.max(0, Math.min(t, maxF));
+  currentFrame = Math.round(playTime);
+  tauMap = interpolateTau(playTime);
+  document.getElementById('timeline').value = Math.round(playTime);
+  // Interpolate the day display
+  const fA = Math.floor(playTime);
+  const fB = Math.min(fA + 1, maxF);
+  const frac = playTime - fA;
+  const dayA = simData.frames[fA].day;
+  const dayB = simData.frames[fB].day;
+  const day = Math.round(dayA + (dayB - dayA) * frac);
+  document.getElementById('day-label').textContent = `Day ${day}`;
+}
+
+function setFrame(idx) {
+  setPlayTime(idx);
+}
+
+function getTau(i, j) {
+  if (i === j) return H;
+  const key = i < j ? `${i},${j}` : `${j},${i}`;
+  return tauMap[key] || 0;
+}
+
+function getPAIR(i, j) {
+  const tau = getTau(i, j);
+  if (tau <= 0) return Infinity;
+  return -Math.log(tau / H);
+}
+
+function getRatio(i, j) {
+  // Scale to data range [0, tauMax] instead of [0, 24]
+  const tauMax = (simData && simData.tauMax) || H;
+  return getTau(i, j) / tauMax;
+}
+
+// ── Color ──
+function pairToColor(r) {
+  const stops = [
+    {t:0.0,rgb:[20,20,60]},{t:0.1,rgb:[30,50,120]},{t:0.25,rgb:[40,100,180]},
+    {t:0.4,rgb:[50,180,180]},{t:0.55,rgb:[120,200,80]},{t:0.7,rgb:[220,200,40]},
+    {t:0.85,rgb:[240,140,30]},{t:1.0,rgb:[240,60,30]},
+  ];
+  const t = Math.sqrt(Math.min(1, Math.max(0, r)));
+  let lower = stops[0], upper = stops[stops.length-1];
+  for (let s = 0; s < stops.length-1; s++) {
+    if (t >= stops[s].t && t <= stops[s+1].t) { lower=stops[s]; upper=stops[s+1]; break; }
+  }
+  const frac = (t - lower.t) / (upper.t - lower.t);
+  const r_ = Math.round(lower.rgb[0]+(upper.rgb[0]-lower.rgb[0])*frac);
+  const g_ = Math.round(lower.rgb[1]+(upper.rgb[1]-lower.rgb[1])*frac);
+  const b_ = Math.round(lower.rgb[2]+(upper.rgb[2]-lower.rgb[2])*frac);
+  return `rgb(${r_},${g_},${b_})`;
+}
+
+// ── Layout ──
+function worldToScreen(wx, wy) {
+  return [W/2 + (wx-camX)*zoom, H_canvas/2 + (wy-camY)*zoom];
+}
+function screenToWorld(sx, sy) {
+  return [camX + (sx-W/2)/zoom, camY + (sy-H_canvas/2)/zoom];
+}
+
+function computeTargetPositions(center) {
+  const positions = {};
+  positions[center] = { wx: 0, wy: 0 };
+  const conns = people.filter(p => p.id !== center);
+  const n = conns.length;
+  for (let idx = 0; idx < n; idx++) {
+    const p = conns[idx];
+    const s = getPAIR(center, p.id);
+    const angle = (2 * Math.PI * idx) / n - Math.PI / 2;
+    const wr = (s === Infinity ? 12 : s) * PIXELS_PER_UNIT;
+    positions[p.id] = { wx: wr * Math.cos(angle), wy: wr * Math.sin(angle) };
+  }
+  return positions;
+}
+
+function calcFitZoom(positions) {
+  let maxR = 0;
+  for (const id in positions) {
+    const r = Math.hypot(positions[id].wx, positions[id].wy);
+    if (r > maxR) maxR = r;
+  }
+  if (maxR === 0) return 1;
+  const padding = 60;
+  const fitDim = Math.min(W - padding*2, H_canvas - padding*2);
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, fitDim / (2 * maxR)));
+}
+
+function updateLayout() {
+  const targets = computeTargetPositions(centerNode);
+  for (const dn of displayNodes) {
+    const t = targets[dn.id];
+    dn.wx = t.wx;
+    dn.wy = t.wy;
+  }
+}
+
+function fitCamera() {
+  const targets = computeTargetPositions(centerNode);
+  zoom = calcFitZoom(targets);
+  camX = 0; camY = 0;
+}
+
+function initDisplayNodes() {
+  const targets = computeTargetPositions(centerNode);
+  displayNodes = people.map(p => ({ id: p.id, name: p.name, wx: targets[p.id].wx, wy: targets[p.id].wy }));
+}
+
+// ── Resize ──
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  W = canvas.clientWidth;
+  H_canvas = canvas.clientHeight;
+  canvas.width = W * dpr;
+  canvas.height = H_canvas * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (!animating) { updateLayout(); fitCamera(); }
+  draw();
+}
+window.addEventListener('resize', resize);
+
+// ── Perspective transition ──
+function easeInOut(t) { return t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
+
+function startTransition(newCenter) {
+  if (animating || newCenter === centerNode) return;
+  animFrom = {};
+  for (const dn of displayNodes) animFrom[dn.id] = { wx: dn.wx, wy: dn.wy };
+  animCamFrom = { x: camX, y: camY };
+  animZoomFrom = zoom;
+  animTo = computeTargetPositions(newCenter);
+  animCamTo = { x: 0, y: 0 };
+  animZoomTo = calcFitZoom(animTo);
+  animNewCenter = newCenter;
+  animStartTime = performance.now();
+  animating = true;
+  hoveredNode = -1; hoveredEdge = null; hideTooltip();
+  requestAnimationFrame(animFrame);
+}
+
+function animFrame(now) {
+  const elapsed = now - animStartTime;
+  const rawT = Math.min(1, elapsed / ANIM_DURATION);
+  const t = easeInOut(rawT);
+  for (const dn of displayNodes) {
+    const from = animFrom[dn.id], to = animTo[dn.id];
+    dn.wx = from.wx + (to.wx - from.wx) * t;
+    dn.wy = from.wy + (to.wy - from.wy) * t;
+  }
+  camX = animCamFrom.x + (animCamTo.x - animCamFrom.x) * t;
+  camY = animCamFrom.y + (animCamTo.y - animCamFrom.y) * t;
+  zoom = animZoomFrom + (animZoomTo - animZoomFrom) * t;
+  draw();
+  if (rawT < 1) requestAnimationFrame(animFrame);
+  else { animating = false; centerNode = animNewCenter; updateSidebar(); }
+}
+
+// ── Pan/click ──
+canvas.addEventListener('mousedown', (e) => {
+  if (e.button === 0 && !animating) {
+    isPanning = true;
+    panStartX = e.clientX; panStartY = e.clientY;
+    mouseDownX = e.clientX; mouseDownY = e.clientY;
+    camStartX = camX; camStartY = camY;
+    canvas.style.cursor = 'grabbing';
+  }
+});
+window.addEventListener('mousemove', (e) => {
+  if (isPanning) {
+    camX = camStartX - (e.clientX - panStartX) / zoom;
+    camY = camStartY - (e.clientY - panStartY) / zoom;
+    draw();
+  }
+});
+window.addEventListener('mouseup', (e) => {
+  if (isPanning) {
+    const dx = e.clientX - mouseDownX, dy = e.clientY - mouseDownY;
+    const wasDrag = Math.abs(dx) > 4 || Math.abs(dy) > 4;
+    isPanning = false;
+    canvas.style.cursor = 'grab';
+    if (!wasDrag && !animating) {
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      for (const dn of displayNodes) {
+        if (dn.id === centerNode) continue;
+        const [sx, sy] = worldToScreen(dn.wx, dn.wy);
+        if ((mx-sx)**2 + (my-sy)**2 < 18*18) { startTransition(dn.id); break; }
+      }
+    }
+  }
+});
+canvas.style.cursor = 'grab';
+
+canvas.addEventListener('wheel', (e) => {
+  if (animating) return;
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const [wx, wy] = screenToWorld(mx, my);
+  const factor = e.deltaY < 0 ? 1.12 : 1/1.12;
+  zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom * factor));
+  camX = wx - (mx - W/2) / zoom;
+  camY = wy - (my - H_canvas/2) / zoom;
+  draw();
+}, { passive: false });
+
+// ── Touch (mobile pan/zoom/tap) ──
+let touchStartDist = 0, touchStartZoom = 1;
+let touchStartCamX = 0, touchStartCamY = 0;
+let touchStartMidX = 0, touchStartMidY = 0;
+let touchPanning = false, touchPinching = false;
+let touchStartX = 0, touchStartY = 0;
+let touchMoved = false;
+
+function touchDist(t) {
+  const dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY;
+  return Math.hypot(dx, dy);
+}
+function touchMid(t) {
+  return [(t[0].clientX + t[1].clientX)/2, (t[0].clientY + t[1].clientY)/2];
+}
+
+canvas.addEventListener('touchstart', (e) => {
+  if (animating) return;
+  e.preventDefault();
+  const touches = e.touches;
+  touchMoved = false;
+  if (touches.length === 1) {
+    touchPanning = true;
+    touchPinching = false;
+    touchStartX = touches[0].clientX;
+    touchStartY = touches[0].clientY;
+    touchStartCamX = camX;
+    touchStartCamY = camY;
+  } else if (touches.length === 2) {
+    touchPanning = false;
+    touchPinching = true;
+    touchStartDist = touchDist(touches);
+    touchStartZoom = zoom;
+    const [mx, my] = touchMid(touches);
+    touchStartMidX = mx; touchStartMidY = my;
+    touchStartCamX = camX; touchStartCamY = camY;
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  if (animating) return;
+  e.preventDefault();
+  const touches = e.touches;
+  touchMoved = true;
+  if (touchPanning && touches.length === 1) {
+    const dx = touches[0].clientX - touchStartX;
+    const dy = touches[0].clientY - touchStartY;
+    camX = touchStartCamX - dx / zoom;
+    camY = touchStartCamY - dy / zoom;
+    draw();
+  } else if (touchPinching && touches.length === 2) {
+    const dist = touchDist(touches);
+    const factor = dist / touchStartDist;
+    zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, touchStartZoom * factor));
+    const rect = canvas.getBoundingClientRect();
+    const [mx, my] = touchMid(touches);
+    const midCanvasX = mx - rect.left, midCanvasY = my - rect.top;
+    const [wx, wy] = [touchStartCamX + (touchStartMidX - rect.left - W/2) / touchStartZoom,
+                       touchStartCamY + (touchStartMidY - rect.top - H_canvas/2) / touchStartZoom];
+    camX = wx - (midCanvasX - W/2) / zoom;
+    camY = wy - (midCanvasY - H_canvas/2) / zoom;
+    draw();
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  if (!touchMoved && e.changedTouches.length === 1 && !touchPinching) {
+    // Tap to select node
+    const t = e.changedTouches[0];
+    const rect = canvas.getBoundingClientRect();
+    const mx = t.clientX - rect.left, my = t.clientY - rect.top;
+    for (const dn of displayNodes) {
+      if (dn.id === centerNode) continue;
+      const [sx, sy] = worldToScreen(dn.wx, dn.wy);
+      if ((mx-sx)**2 + (my-sy)**2 < 22*22) { startTransition(dn.id); break; }
+    }
+  }
+  touchPanning = false;
+  touchPinching = false;
+}, { passive: false });
+
+// ── Sidebar toggle (mobile) ──
+const menuToggle = document.getElementById('menu-toggle');
+const sidebar = document.getElementById('sidebar');
+const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+const sidebarClose = document.getElementById('sidebar-close');
+
+function openSidebar() { sidebar.classList.add('open'); sidebarBackdrop.classList.add('open'); }
+function closeSidebar() { sidebar.classList.remove('open'); sidebarBackdrop.classList.remove('open'); }
+
+menuToggle.addEventListener('click', openSidebar);
+sidebarClose.addEventListener('click', closeSidebar);
+sidebarBackdrop.addEventListener('click', closeSidebar);
+
+// ── Draw ──
+function draw() {
+  ctx.clearRect(0, 0, W, H_canvas);
+  if (!simData) return;
+
+  const effectiveCenter = animating
+    ? (performance.now() - animStartTime > ANIM_DURATION/2 ? animNewCenter : centerNode)
+    : centerNode;
+
+  const centerDN = displayNodes.find(n => n.id === effectiveCenter);
+  const [scx, scy] = worldToScreen(centerDN.wx, centerDN.wy);
+
+  // Range rings
+  const ringDistances = [1,2,4,6,8];
+  const ringLabels = ['PAIR=1','PAIR=2','PAIR=4','PAIR=6','PAIR=8'];
+  ctx.strokeStyle = '#3a3a4a'; ctx.lineWidth = 1;
+  for (let ri = 0; ri < ringDistances.length; ri++) {
+    const r = ringDistances[ri] * PIXELS_PER_UNIT * zoom;
+    ctx.beginPath(); ctx.arc(scx, scy, r, 0, 2*Math.PI); ctx.stroke();
+    ctx.fillStyle = '#eaeaea';
+    ctx.font = `${Math.max(9, Math.min(12, 10*zoom))}px monospace`;
+    ctx.textAlign = 'left';
+    ctx.fillText(ringLabels[ri], scx+r+4, scy-4);
+  }
+
+  const screenNodes = displayNodes.map(dn => {
+    const [sx,sy] = worldToScreen(dn.wx, dn.wy);
+    return { ...dn, x:sx, y:sy };
+  });
+  const centerSN = screenNodes.find(n => n.id === effectiveCenter);
+  const connSN = screenNodes.filter(n => n.id !== effectiveCenter);
+
+  // Dashed inter-connection edges
+  for (let a = 0; a < connSN.length; a++) {
+    for (let b = a+1; b < connSN.length; b++) {
+      const na = connSN[a], nb = connSN[b];
+      const ratio = getRatio(na.id, nb.id);
+      const isH = hoveredEdge && ((hoveredEdge[0]===na.id&&hoveredEdge[1]===nb.id)||(hoveredEdge[0]===nb.id&&hoveredEdge[1]===na.id));
+      ctx.beginPath(); ctx.setLineDash([6,4]);
+      ctx.moveTo(na.x,na.y); ctx.lineTo(nb.x,nb.y);
+      ctx.strokeStyle = pairToColor(ratio);
+      ctx.lineWidth = isH ? 3 : 1.5;
+      ctx.globalAlpha = isH ? 1.0 : 0.6;
+      ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1.0;
+    }
+  }
+
+  // Solid radial edges
+  for (const np of connSN) {
+    ctx.beginPath();
+    ctx.moveTo(centerSN.x, centerSN.y); ctx.lineTo(np.x, np.y);
+    ctx.strokeStyle = pairToColor(getRatio(effectiveCenter, np.id));
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+  }
+
+  // Connection nodes
+  for (const np of connSN) {
+    const isH = hoveredNode === np.id;
+    if (isH) {
+      const grad = ctx.createRadialGradient(np.x,np.y,0,np.x,np.y,24);
+      grad.addColorStop(0,'rgba(140,160,255,0.3)'); grad.addColorStop(1,'rgba(140,160,255,0)');
+      ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(np.x,np.y,24,0,2*Math.PI); ctx.fill();
+    }
+    ctx.beginPath(); ctx.arc(np.x,np.y,8,0,2*Math.PI);
+    ctx.fillStyle = isH ? '#a0a8e0' : '#6068a0'; ctx.fill();
+    ctx.strokeStyle = '#2a2a4a'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = isH ? '#f0f0f4' : '#eaeaea';
+    ctx.font = `${isH?'13':'12'}px monospace`; ctx.textAlign = 'center';
+    ctx.fillText(np.name, np.x, np.y-14);
+  }
+
+  // Center node
+  ctx.beginPath(); ctx.arc(centerSN.x,centerSN.y,12,0,2*Math.PI);
+  ctx.fillStyle = '#e8e0f0'; ctx.fill();
+  ctx.strokeStyle = '#4a4a6a'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = '#e8e0f0'; ctx.font = 'bold 13px monospace'; ctx.textAlign = 'center';
+  ctx.fillText(people[effectiveCenter].name, centerSN.x, centerSN.y-18);
+  ctx.font = '10px monospace'; ctx.fillStyle = '#eaeaea';
+  ctx.fillText('(perspective center)', centerSN.x, centerSN.y+28);
+
+  // Legend box
+  const lx=16,ly=16,lw=200,lh=108;
+  ctx.fillStyle='rgba(12,12,20,0.85)'; ctx.strokeStyle='#2a2a3a'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.roundRect(lx,ly,lw,lh,6); ctx.fill(); ctx.stroke();
+  ctx.font='11px monospace'; ctx.textAlign='left';
+  const r1y=ly+22;
+  ctx.beginPath(); ctx.moveTo(lx+12,r1y); ctx.lineTo(lx+48,r1y);
+  ctx.strokeStyle='#8090c0'; ctx.lineWidth=2; ctx.stroke();
+  ctx.fillStyle='#eaeaea'; ctx.fillText('Direct (geometric)',lx+56,r1y+4);
+  const r2y=ly+42;
+  ctx.beginPath(); ctx.setLineDash([6,4]); ctx.moveTo(lx+12,r2y); ctx.lineTo(lx+48,r2y);
+  ctx.strokeStyle='#8090c0'; ctx.lineWidth=2; ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#eaeaea'; ctx.fillText('Indirect (projected)',lx+56,r2y+4);
+  const r3y=ly+60;
+  ctx.fillStyle='#eaeaea'; ctx.fillText('PAIR color:',lx+12,r3y+4);
+  const gx=lx+12,gy=r3y+14,gw=lw-24,gh=10;
+  for (let x=0;x<gw;x++) { ctx.fillStyle=pairToColor(x/gw); ctx.fillRect(gx+x,gy,1,gh); }
+  ctx.font='9px monospace'; ctx.fillStyle='#eaeaea';
+  ctx.textAlign='left'; ctx.fillText('0',gx,gy+gh+10);
+  ctx.textAlign='right'; ctx.fillText('1',gx+gw,gy+gh+10);
+  ctx.textAlign='center'; ctx.fillText('PAIR',gx+gw/2,gy+gh+10);
+}
+
+// ── Sidebar ──
+function updateSidebar() {
+  const select = document.getElementById('perspective-select');
+  select.innerHTML = '';
+  for (const p of people) {
+    const opt = document.createElement('option');
+    opt.value = p.id; opt.textContent = p.name; opt.selected = p.id === centerNode;
+    select.appendChild(opt);
+  }
+  updateConnectionList();
+  drawLegendGradient();
+}
+
+function updateConnectionList() {
+  const list = document.getElementById('node-list');
+  list.innerHTML = '';
+  const conns = people.filter(p => p.id !== centerNode)
+    .map(p => ({ ...p, pair: getPAIR(centerNode, p.id), tau: getTau(centerNode, p.id) }))
+    .sort((a,b) => a.pair - b.pair);
+  for (const c of conns) {
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="node-name">${c.name}</span><span class="node-val">τ=${c.tau.toFixed(1)}  PAIR=${c.pair.toFixed(2)}</span>`;
+    list.appendChild(li);
+  }
+}
+
+function drawLegendGradient() {
+  const lc = document.getElementById('legend-gradient');
+  const lctx = lc.getContext('2d');
+  const lw = lc.clientWidth;
+  lc.width = lw * (window.devicePixelRatio||1);
+  lc.height = 14 * (window.devicePixelRatio||1);
+  lctx.setTransform(window.devicePixelRatio||1,0,0,window.devicePixelRatio||1,0,0);
+  for (let x=0;x<lw;x++) { lctx.fillStyle=pairToColor(x/lw); lctx.fillRect(x,0,1,14); }
+}
+
+// ── Dropdown ──
+document.getElementById('perspective-select').addEventListener('change', (e) => {
+  const nc = parseInt(e.target.value);
+  if (nc !== centerNode) startTransition(nc);
+});
+
+// ── Hover ──
+let mouseScreenX=0, mouseScreenY=0;
+canvas.addEventListener('mousemove', (e) => {
+  mouseScreenX = e.clientX; mouseScreenY = e.clientY;
+  if (isPanning || animating) { hideTooltip(); return; }
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX-rect.left, my = e.clientY-rect.top;
+  const sn = displayNodes.map(dn => { const [sx,sy]=worldToScreen(dn.wx,dn.wy); return {...dn,x:sx,y:sy}; });
+  const cSN = sn.find(n=>n.id===centerNode);
+  const cns = sn.filter(n=>n.id!==centerNode);
+  let fNode = -1;
+  for (const np of cns) { if ((mx-np.x)**2+(my-np.y)**2<16*16) { fNode=np.id; break; } }
+  let fEdge = null;
+  if (fNode===-1) {
+    let minD=8;
+    for (const np of cns) { const d=ptSeg(mx,my,cSN.x,cSN.y,np.x,np.y); if(d<minD){minD=d;fEdge=[centerNode,np.id];} }
+    for (let a=0;a<cns.length;a++) for (let b=a+1;b<cns.length;b++) {
+      const d=ptSeg(mx,my,cns[a].x,cns[a].y,cns[b].x,cns[b].y);
+      if(d<minD){minD=d;fEdge=[cns[a].id,cns[b].id];}
+    }
+  }
+  const changed = hoveredNode!==fNode||JSON.stringify(hoveredEdge)!==JSON.stringify(fEdge);
+  hoveredNode=fNode; hoveredEdge=fNode===-1?fEdge:null;
+  if (changed) { draw(); updateHoverInfo(); }
+  positionTooltip();
+});
+canvas.addEventListener('mouseleave', () => { hoveredNode=-1; hoveredEdge=null; hideTooltip(); draw(); });
+
+function ptSeg(px,py,ax,ay,bx,by) {
+  const dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy;
+  if(l2===0) return Math.hypot(px-ax,py-ay);
+  let t=((px-ax)*dx+(py-ay)*dy)/l2; t=Math.max(0,Math.min(1,t));
+  return Math.hypot(px-(ax+t*dx),py-(ay+t*dy));
+}
+
+const tooltip = document.getElementById('tooltip');
+function hideTooltip() { tooltip.style.display='none'; }
+function positionTooltip() {
+  if(tooltip.style.display==='none') return;
+  const o=14; let tx=mouseScreenX+o,ty=mouseScreenY+o;
+  const tw=tooltip.offsetWidth,th=tooltip.offsetHeight;
+  if(tx+tw>window.innerWidth-8) tx=mouseScreenX-tw-o;
+  if(ty+th>window.innerHeight-8) ty=mouseScreenY-th-o;
+  tooltip.style.left=tx+'px'; tooltip.style.top=ty+'px';
+}
+
+function updateHoverInfo() {
+  const info = document.getElementById('hover-info');
+  if (hoveredNode!==-1) {
+    const p=people[hoveredNode], s=getPAIR(centerNode,hoveredNode), tau=getTau(centerNode,hoveredNode);
+    info.innerHTML=`<span class="highlight">${people[centerNode].name} ↔ ${p.name}</span><br>τ = ${tau.toFixed(2)} hrs/day<br>PAIR = ${s.toFixed(2)}`;
+    tooltip.innerHTML=`<span class="tt-title">${people[centerNode].name} ↔ ${p.name}</span><br>τ = ${tau.toFixed(2)} hrs/day<br>PAIR = ${s.toFixed(2)}`;
+    tooltip.style.display='block'; positionTooltip();
+  } else if (hoveredEdge) {
+    const [i,j]=hoveredEdge, pi=people[i], pj=people[j], tau=getTau(i,j), s=getPAIR(i,j);
+    const isDirect = i===centerNode||j===centerNode;
+    info.innerHTML=`<span class="highlight">${pi.name} ↔ ${pj.name}</span><br>τ = ${tau.toFixed(2)} hrs/day<br>PAIR = ${s.toFixed(2)}`;
+    tooltip.innerHTML=`<span class="tt-title">${pi.name} ↔ ${pj.name}</span>${isDirect?'':'<br><span class="tt-dim">projected (non-geometric)</span>'}<br>τ = ${tau.toFixed(2)} hrs/day<br>PAIR = ${s.toFixed(2)}`;
+    tooltip.style.display='block'; positionTooltip();
+  } else {
+    info.innerHTML='Hover over a node or edge for details.'; hideTooltip();
+  }
+}
+
+// ── Playback (rAF-based) ──
+function playTick(now) {
+  if (!playing) return;
+
+  if (lastTickTime > 0) {
+    const dt = (now - lastTickTime) / 1000; // seconds
+    const advance = BASE_RATE * speedMul * dt;
+    const newTime = playTime + advance;
+
+    if (newTime >= simData.frames.length - 1) {
+      setPlayTime(simData.frames.length - 1);
+      stopPlayback();
+      if (!animating) updateLayout();
+      updateConnectionList();
+      draw();
+      return;
+    }
+
+    setPlayTime(newTime);
+    if (!animating) updateLayout();
+
+    // Throttle sidebar list updates to ~8 Hz (every ~125ms)
+    if (now - sidebarThrottle > 125) {
+      updateConnectionList();
+      sidebarThrottle = now;
+    }
+  }
+
+  lastTickTime = now;
+  draw();
+  rafId = requestAnimationFrame(playTick);
+}
+
+function startPlayback() {
+  if (playing) return;
+  playing = true;
+  lastTickTime = 0; // reset so first frame computes no advance
+  document.getElementById('btn-play').innerHTML = '<i class="ph ph-pause"></i>';
+  document.getElementById('btn-play').classList.add('active');
+  rafId = requestAnimationFrame(playTick);
+}
+
+function stopPlayback() {
+  playing = false;
+  lastTickTime = 0;
+  document.getElementById('btn-play').innerHTML = '<i class="ph ph-play"></i>';
+  document.getElementById('btn-play').classList.remove('active');
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+}
+
+function stepFrame(dir) {
+  stopPlayback();
+  setPlayTime(Math.round(playTime) + dir);
+  if (!animating) updateLayout();
+  updateConnectionList();
+  draw();
+}
+
+document.getElementById('btn-play').addEventListener('click', () => {
+  if (playing) stopPlayback(); else startPlayback();
+});
+
+document.getElementById('btn-slower').addEventListener('click', () => {
+  speedIdx = Math.max(0, speedIdx - 1);
+  speedMul = SPEED_OPTIONS[speedIdx];
+  document.getElementById('speed-label').textContent = speedMul + '×';
+});
+
+document.getElementById('btn-faster').addEventListener('click', () => {
+  speedIdx = Math.min(SPEED_OPTIONS.length - 1, speedIdx + 1);
+  speedMul = SPEED_OPTIONS[speedIdx];
+  document.getElementById('speed-label').textContent = speedMul + '×';
+});
+
+document.getElementById('timeline').addEventListener('input', (e) => {
+  stopPlayback();
+  setPlayTime(parseInt(e.target.value));
+  if (!animating) updateLayout();
+  updateConnectionList();
+  draw();
+});
+
+// ── Keyboard shortcuts ──
+document.addEventListener('keydown', (e) => {
+  if (e.key === ' ') { e.preventDefault(); if (playing) stopPlayback(); else startPlayback(); }
+  if (e.key === 'ArrowRight') { e.preventDefault(); stepFrame(1); }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); stepFrame(-1); }
+});
+
+// ── Load and start ──
+async function init() {
+  try {
+    const resp = await fetch('sim.json');
+    simData = await resp.json();
+  } catch {
+    // Fallback: try with full path
+    const resp = await fetch('/social-mechanics/docs/sim.json');
+    simData = await resp.json();
+  }
+
+  N = simData.n;
+  people = simData.names.map((name, id) => ({ id, name }));
+
+  // Set up timeline slider
+  document.getElementById('timeline').max = simData.frames.length - 1;
+  setFrame(0);
+
+  document.getElementById('loading').style.display = 'none';
+
+  initDisplayNodes();
+  resize();
+  updateSidebar();
+}
+
+init();
+</script>
+</body>
+</html>
